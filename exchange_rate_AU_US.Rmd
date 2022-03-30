@@ -1,0 +1,426 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning=FALSE, echo = F, comment='')
+```
+
+## Исследовательское задание на экзамен по дисциплине Временные ряды 
+Анализ и прогноз валютного курса Австралийского доллара(\$AUS) к доллару США(\$USD)
+
+ПУНКТ 1
+
+```{r, warning=FALSE}
+library(stats)
+library(tseries)
+library(urca)
+library(forecast)
+# загружаем данные
+
+data = readxl::read_xlsx('C:/Users/Vanessa/Desktop/HSE/TIME_SERIES/PROJECT2/DATA.xlsx')
+description = readxl::read_xlsx('C:/Users/Vanessa/Desktop/HSE/TIME_SERIES/PROJECT2/DATA.xlsx', sheet=2)
+# создаем объект timeseries
+data = ts(data, start = c(1978,2), frequency = 12)
+# проверочка, всё ли правильно сработало
+start(data)
+end(data)
+
+# colnames(data)
+```
+
+## Нормализация данных
+Посмотрим на график обменного курса AUS-USA.
+```{r}
+# Посмотрим на данные
+# главная переменная 
+ts.plot(data[,2], xlab = "Year", ylab="Exchange rate AUS - USD", main = "Exchange rate dynamics", type="line")
+```
+
+Обменный курс не выглядит стационарным. Проведем тест:
+```{r}
+# Проверка на стационарность обменного курса $AUS-$USD
+new_data = data[,2]
+Pacf(new_data)
+adf.test(new_data, alternative = c('stationary'))
+kpss.test(new_data)
+# вывод - гипотеза о нестационарности обменного курса не отклоняется
+```
+
+Мы провели тест на стационарность Augmented Dickey-Fuller. Вероятность, что такое распределение является нестационарным высока - 0.4, поэтому мы не отвергаем нулевую гипотезу. Ряд нестационарен
+
+
+Проверим на первых разностях:
+```{r}
+d1_exc_rate<-diff(data[,2], differences=1)
+ts.plot(d1_exc_rate, xlab = "Year", ylab="Exchange rate", main = "Exchange rate dynamics", type="line")
+# Проверка на стационарность первых разностей обменного курса $AUS-$USD
+Pacf(d1_exc_rate)
+adf.test(d1_exc_rate, alternative = c('stationary'))
+acf(d1_exc_rate)
+# вывод - гипотеза о том, что ряд нестационарен отклоняется
+```
+
+Рассмотрим для начала разные модели AR
+
+```{r}
+'AR1'
+AR1 <- Arima(d1_exc_rate, c(1,0,0), include.constant =TRUE, method = c("CSS-ML"))  
+summary(AR1)
+Acf(residuals(AR1))
+a = Box.test(residuals(AR1), lag = 6, type = c("Ljung-Box"), fitdf = 1)
+a1 = a$p.value
+a1
+```
+
+Есть автокорелляция в остатках
+
+```{r}
+'вариант 2. через функцию Arima пакета Forecast'
+'AR2'
+AR2 <- Arima(new_data, c(2,1,0), include.constant =TRUE, method = c("CSS-ML"))  
+summary(AR1)
+Acf(residuals(AR1))
+a = Box.test(residuals(AR1), lag = 6, type = c("Ljung-Box"), fitdf = 2)
+a2 = a$p.value
+a2
+```
+
+Есть автокорелляция в остатках
+
+```{r}
+'вариант 2. через функцию Arima пакета Forecast'
+'AR12'
+AR12 <- Arima(d1_exc_rate, c(12,0,0), include.constant =TRUE, method = c("CSS-ML"))  
+summary(AR12)
+Acf(residuals(AR12))
+a = Box.test(residuals(AR12), lag = 6, type = c("Ljung-Box"), fitdf = 12)
+a3 = a$p.value
+a3
+```
+
+Нет автокорелляции в остатках
+
+Среди AR моделей самой подходящей оказалась модель AR(12)
+
+
+MA
+
+```{r}
+#MA1
+library(TSA)
+acf(d1_exc_rate)
+MA1 <- Arima(data[,2], c(0,1,1), include.constant =TRUE, method = c("CSS-ML"))  
+summary(MA1)
+Acf(residuals(MA1))
+a = Box.test(residuals(MA1), lag = 6, type = c("Ljung-Box"), fitdf = 1)
+a4 = a$p.value
+a4
+```
+
+Автокорреляции в остатках нет
+
+```{r}
+#MA2
+MA2 <- Arima(data[,2], c(0,1,2), include.constant =TRUE, method = c("CSS-ML"))  
+summary(MA2)
+Acf(residuals(MA2))
+a = Box.test(residuals(MA2), lag = 6, type = c("Ljung-Box"), fitdf = 2)
+a4 = a$p.value
+```
+
+Автокорреляции в остатках нет
+
+Проверим теперь модели ARMA
+
+```{r}
+eacf(d1_exc_rate)
+```
+
+Проверим модели ARMA(1,2) и ARMA(3,1)
+
+```{r}
+#ARMA(1,2)
+#MA2
+ARMA12 <- Arima(data[,2], c(1,1,2), include.constant =TRUE, method = c("CSS-ML"))  
+summary(ARMA12)
+Acf(residuals(ARMA12))
+a = Box.test(residuals(ARMA12), lag = 6, type = c("Ljung-Box"), fitdf = 3)
+a5 = a$p.value
+a5
+```
+
+Автокорреляции в остатках нет
+
+```{r}
+#ARMA(3,1)
+ARMA31 <- Arima(data[,2], c(3,1,1), include.constant =TRUE, method = c("CSS-ML"))  
+summary(ARMA31)
+Acf(residuals(ARMA31))
+a = Box.test(residuals(ARMA31), lag = 6, type = c("Ljung-Box"), fitdf = 4)
+a5 = a$p.value
+a5
+```
+
+Автокорреляции в остатках почти нет (на графике ACF выпирает 13 период)
+
+Посмотрим на параметры моделей, чтобы выбрать лучшую
+
+```{r}
+metrics <- data.frame(
+loglike = c(AR12$loglik, MA1$loglik, MA2$loglik, ARMA12$loglik, ARMA31$loglik),
+AIC = c(AR12$aic, MA1$aic, MA2$aic, ARMA12$aic, ARMA31$aic),
+BIC = c(AR12$bic, MA1$bic, MA2$bic, ARMA12$bic, ARMA31$bic),
+row.names=c("AR12","MA1","MA2","ARMA12", "ARMA31"))
+metrics
+```
+
+MA1 по всем параметрам лучше MA2, так же хорошие показатели у модели ARMA(1,2). Мы выбираем эти модели.
+
+Сделаем прогноз по этим моделям
+
+```{r}
+forecast_MA1<-forecast(MA1, h=60)
+plot(forecast_MA1)
+```
+
+```{r}
+forecast_ARMA12<-forecast(ARMA12, h=60)
+plot(forecast_ARMA12)
+```
+
+
+Проверим модели на наличие автокорреляции в квадратах остатков (arch-эффект)
+```{r}
+Box.test(residuals(MA1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+shapiro.test(d1_exc_rate)
+Pacf(residuals(MA1)^2)
+```
+
+В квадратах остатков модели MA1 нет нормального распределения. В них так же наблюдается автокорреляция.
+
+```{r}
+Box.test(residuals(ARMA12)^2, lag = 6, type = c("Ljung-Box"), fitdf = 3)
+shapiro.test(d1_exc_rate)
+Pacf(residuals(ARMA12)^2)
+```
+
+В квадратах остатков модели ARMA1 нет нормального распределения. В них так же наблюдается автокорреляция.
+
+Для модели ARMA(1,2) попробуем модели GARCH[2], GARCH[6]
+
+```{r}
+eacf(residuals(ARMA12)^2)
+```
+
+
+```{r}
+#ARCH 
+library("rugarch")
+library("forecast")
+library("lmtest")
+library("tseries")
+library("urca")
+d2_exc_rate<-diff(data[,2], lag = 2,  differences=1)
+library("TSA")
+spec = ugarchspec(variance.model = list(model = 'sGARCH',garchOrder = c(2, 2)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+coef(garch.fit1)
+Acf(residuals(garch.fit1)^2)
+Pacf(residuals(garch.fit1)^2)
+Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 3)
+```
+
+
+Полностью убрать автокорреляцию квадратов остатков не получается, поэтому мы выбрали модель, которая снизила её лучше всего, это GARCH(0, 2)
+
+Составим прогноз, учитывая garch-эффект
+
+```{r}
+prognoz <- ugarchforecast(garch.fit1, n.ahead = 60)
+plot(prognoz@forecast$seriesFor, type="line")
+Yforecast<-c(d1_exc_rate, prognoz@forecast$seriesFor)
+plot(Yforecast, type="line")
+```
+
+
+Начнём искать структурные разрывы
+
+
+За долгосрочный прогноз отвечает коэффициент а0. Важно наличие структурного разрыва в интерсепте (коэффициенте а0). У нас достаточно большая выборка, поэтому мы для поиска структурных разрывов проверяем Sup-F тест.
+
+```{r}
+library("strucchange")
+d1_l1 <- c(0,d1_exc_rate[1:length(d1_exc_rate)-1])
+d1_l2 <- c(0,0,d1_exc_rate[2:length(d1_exc_rate)-2])
+stat <- Fstats(d1_exc_rate ~ d1_l1, from = 0.1, to = NULL)
+plot(stat, alpha = 0.01)
+lines(breakpoints(stat))
+a<-breakpoints(stat)
+a$breakpoints
+sctest(stat, type = "supF")
+```
+
+```{r}
+#d1 скорректированная на изменчивую волатильность (на ARCH-эффект)
+d1adj<-residuals(ARMA12)/garch.fit1@fit$sigma*sd(residuals(garch.fit1))
+plot(d1adj)
+d1adj<-d1adj[1:length(d1adj)]
+d1adj_l1 <- c(0,d1adj[1:length(d1adj)-1])
+d1adj_l2 <- c(0,0,d1adj[2:length(d1adj)-2])
+stat <- Fstats(d1adj ~ d1adj_l1, from = 0.01, to = NULL)
+plot(stat, alpha = 0.01)
+lines(breakpoints(stat))
+a<-breakpoints(stat)
+a$breakpoints
+sctest(stat, type = "supF")
+```
+
+Sup-F тест показывает, что структурных разрывов нет.
+
+
+Попробуем найти разрывы методом CUSUM
+
+```{r}
+datay <- data.frame(d1_exc_rate, d1_l1, d1_l2)
+colnames(datay) <- c("y", "ylag1", "ylag2")
+stat <- efp(y ~ ylag1,  type = "OLS-CUSUM", data = datay)
+plot(stat, alpha = 0.1, functional = NULL)
+sctest(stat)
+```
+
+```{r}
+datay <- data.frame(d1adj, d1adj_l1, d1adj_l2)
+colnames(datay) <- c("y", "ylag1", "ylag2")
+stat <- efp(y ~ ylag1,  type = "OLS-CUSUM", data = datay)
+plot(stat, alpha = 0.1, functional = NULL)
+sctest(stat)
+```
+Структурных разрывов нет
+
+
+
+## VAR-модель
+
+Посмотрим на графики прочих переменных:
+```{r}
+# остальные data[2:22]
+plot(data[,2:10], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data[,11:18], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data[,19:22], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+```
+Займемся нормализацией переменных. Переменные 5,6,7,8,19,20,21,22 - нужно логарифмировать. Явно прослеживается экспоненциальный тренд.
+
+```{r}
+data_norm = data
+data_norm[,5:8] = log(data[,5:8])
+data_norm[,19:22] = log(data[,19:22])
+plot(data_norm[,2:10], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data_norm[,11:18], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data_norm[,19:22], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+```
+Проверим, какие из рядов являются стационарными. 
+```{r}
+stat_p=c()
+# data_stat = diff(data)
+for (i in 2:22){
+  test = adf.test(data_norm[,i], alternative = c('stationary'))
+  stat_p = append(stat_p, test$p.value)
+}
+stat_p
+stat_p[]<0.05
+```
+
+Только ряды 17-19-е являются стационарными. Перейдем лучше к первым разностям:
+```{r}
+data_norm = data
+data_norm[,5:8] = log(data[,5:8])
+data_norm[,19:22] = log(data[,19:22])
+data_norm= diff(data_norm, differences = 1)
+
+stat_p=c()
+for (i in 2:22){
+  test = adf.test(data_norm[,i], alternative = c('stationary'))
+  stat_p = append(stat_p, test$p.value)
+}
+stat_p
+stat_p[]<0.05
+```
+Одна переменная все равно не стационарна, поэтому перейдем ко 2-м разностям:
+
+```{r}
+data_norm = data
+data_norm[,5:8] = log(data[,5:8])
+data_norm[,19:22] = log(data[,19:22])
+data_norm= diff(data_norm, differences = 2)
+
+stat_p=c()
+for (i in 2:22){
+  test = adf.test(data_norm[,i], alternative = c('stationary'))
+  stat_p = append(stat_p, test$p.value)
+}
+stat_p
+stat_p[]<0.05
+
+plot(data_norm[,2:10], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data_norm[,11:18], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+plot(data_norm[,19:22], xlab = "Year", ylab="Exchange rate", main = "Other variables", type="line")
+```
+Теперь все временные ряды стационарны, можно с ними работать дальше.
+
+-----------------
+Далее нужно использовать только вторые разности из датасета data_norm.
+
+Чтобы найти переменные, влияющие на обменный курс, проведем тест Грэнджера на причинность:
+```{r }
+# cff(зависимая переменная, объясняющая)
+# для переменной слева: у нее берется лаг как на шкале, а у правой переменной - лаг 0
+# для переменной справа: у нее берется лаг как на шкале, а у левой переменной - лаг 0
+# где больше значимых лагов - та переменная больше влияет на другую
+
+# granger(объясняющая переменная, зависимая переменная, lag=число лагов)
+# если p=0, то переменная точно является причиной и объясняет зависимую
+```
+Инфляция в Австралии оказывает влияние на обменный курс \$AU-\$US на 5%-ном уровне значимости.  
+
+```{r}
+cor_p=c()
+for (i in 3:22){
+  test_cor = grangertest(data_norm[,i], data_norm[,2], order = 24)
+  cor_p = append(cor_p, test_cor$`Pr(>F)`)
+}
+
+data.frame('номер_переменной'= seq(3,22,1),'переменная'=colnames(data_norm)[3:22],'p_value' = na.omit(cor_p)[1:20], "значимость" = na.omit(cor_p)[1:20]<0.05)
+```
+При включении в модель по отдельности некоторые переменные, а именно:  
+- уровень цен в Австралии, 
+- дефлятор ВВП Австралии и 
+- дефлятор ВВП США 
+уменьшают ошибку прогноза и следовательно улучшают предсказание обменного курса \$AU-\$US на 5%-ном уровне значимости.
+
+Прочие переменные, а именно: уровень цен в США, денежные аггрегаты, безработица, ВВП, %-ная ставка, индекс рынка, импорт и экспорт в обеих странах - не оказывают статистически значимого влияния на обменный курс на 5%-ном уровне значимости.
+
+
+Так выглядят кросс-корреляционные функции значимых для прогноза переменных:
+```{r}
+
+plot(
+   ccf(data_norm[,2], data_norm[,3], lag.max = 24, type = c("correlation"), plot =FALSE)
+   ,main = "Обменный курс $AU-$US - уровень цен в Австралии", 
+   )
+
+plot(
+   ccf(data_norm[,2], data_norm[,13], lag.max = 24, type = c("correlation"),plot = FALSE)
+   ,main = "Обменный курс $AU-$US - дефлятор ВВП Австралии"
+   )
+
+plot(
+   ccf(data_norm[,2], data_norm[,14], lag.max = 24, type = c("correlation"),plot = FALSE)
+   ,main = "Обменный курс $AU-$US - дефлятор ВВП США"
+   )
+```
+
+
