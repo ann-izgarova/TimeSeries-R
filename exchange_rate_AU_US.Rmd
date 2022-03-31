@@ -21,6 +21,9 @@ library(urca)
 library(forecast)
 library(vars)
 library("portes")
+library("rugarch")
+library("lmtest")
+library("TSA")
 # загружаем данные
 
 data = readxl::read_xlsx('C:/Users/Vanessa/Desktop/HSE/TIME_SERIES/PROJECT2/DATA.xlsx')
@@ -132,6 +135,7 @@ summary(MA2)
 Acf(residuals(MA2))
 a = Box.test(residuals(MA2), lag = 6, type = c("Ljung-Box"), fitdf = 2)
 a4 = a$p.value
+a4
 ```
 
 Автокорреляции в остатках нет
@@ -167,7 +171,7 @@ a5 = a$p.value
 a5
 ```
 
-Автокорреляции в остатках почти нет (на графике ACF выпирает 13 период)
+Автокорреляции в остатках нет
 
 Посмотрим на параметры моделей, чтобы выбрать лучшую
 
@@ -195,58 +199,144 @@ plot(forecast_ARMA12)
 ```
 
 
-Проверим модели на наличие автокорреляции в квадратах остатков (arch-эффект)
+Проверим наличие автокорреляции в квадратах остатков (arch-эффект) модели MA1
 ```{r}
-Box.test(residuals(MA1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
-shapiro.test(d1_exc_rate)
+plot(density(residuals(MA1)))
+shapiro.test(residuals(MA1))
+Box.test(residuals(MA1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1) # есть автокорреляция
 Pacf(residuals(MA1)^2)
+# подошли бы garch2 и garch6
 ```
-
 В квадратах остатков модели MA1 нет нормального распределения. В них так же наблюдается автокорреляция.
 
+
+Проверим наличие автокорреляции в квадратах остатков (arch-эффект) модели MA2
 ```{r}
-Box.test(residuals(ARMA12)^2, lag = 6, type = c("Ljung-Box"), fitdf = 3)
-shapiro.test(d1_exc_rate)
+plot(density(residuals(MA2)))
+shapiro.test(residuals(MA2))
+Box.test(residuals(MA2)^2, lag = 6, type = c("Ljung-Box"), fitdf = 2) # есть автокорреляция
+Pacf(residuals(MA2)^2)
+# подошли бы garch2 и garch6
+```
+
+В квадратах остатков модели MA2 нет нормального распределения. В них так же наблюдается автокорреляция.
+
+Проверим наличие автокорреляции в квадратах остатков (arch-эффект) модели ARMA12  
+```{r}
+plot(density(residuals(ARMA12)))
+shapiro.test(residuals(ARMA12))
+Box.test(residuals(ARMA12)^2, lag = 6, type = c("Ljung-Box"), fitdf = 3) # есть автокорреляция
 Pacf(residuals(ARMA12)^2)
+# подошли бы garch2 и garch6
 ```
 
-В квадратах остатков модели ARMA1 нет нормального распределения. В них так же наблюдается автокорреляция.
+В квадратах остатков модели ARMA12 нет нормального распределения. В них так же наблюдается автокорреляция.
 
-Для модели ARMA(1,2) попробуем модели GARCH[2], GARCH[6]
 
+
+ARMA(1,2)+sGARCH 
 ```{r}
-eacf(residuals(ARMA12)^2)
+#ARCH-GARCH 
+d1_exc_rate<-diff(data[,2], differences=1) #на всякий случай еще раз
+# garc_ord = c(c(1, 1),c(1, 2),c(2, 1),c(2, 2),c(6, 1),c(6, 2))
+
+stat_garch=c()
+for (i in 1:2){
+  for (j in 0:2){
+    spec = ugarchspec(variance.model = list(model = 'sGARCH',garchOrder = c(i,j)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+    garch.fit1 = ugarchfit(spec, d1_exc_rate)
+    box = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = i+j)
+    stat_garch = append(stat_garch, box$p.value)}}
+stat_garch
+
 ```
-
-
+Рассмотрим ARMA(1,2) + apARCH, eGARCH, iGARCH, csGARCH
 ```{r}
-#ARCH 
-library("rugarch")
-library("forecast")
-library("lmtest")
-library("tseries")
-library("urca")
-d2_exc_rate<-diff(data[,2], lag = 2,  differences=1)
-library("TSA")
-spec = ugarchspec(variance.model = list(model = 'sGARCH',garchOrder = c(2, 2)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+spec = ugarchspec(variance.model = list(model = 'apARCH',garchOrder = c(1,0)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
 garch.fit1 = ugarchfit(spec, d1_exc_rate)
-coef(garch.fit1)
-Acf(residuals(garch.fit1)^2)
-Pacf(residuals(garch.fit1)^2)
-Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 3)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+box_apgarch$p.value
+
+spec = ugarchspec(variance.model = list(model = 'eGARCH',garchOrder = c(1,1)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+box_apgarch$p.value
+
+spec = ugarchspec(variance.model = list(model = 'iGARCH',garchOrder = c(1,1)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+box_apgarch$p.value
+
+spec = ugarchspec(variance.model = list(model = 'csGARCH',garchOrder = c(1,1)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+box_apgarch$p.value
+
 ```
 
+Автокорреляция остатков присутствует по-прежнему
 
-Полностью убрать автокорреляцию квадратов остатков не получается, поэтому мы выбрали модель, которая снизила её лучше всего, это GARCH(0, 2)
+
+
+MA(1)+sGARCH + apARCH
+```{r}
+stat_garch=c()
+for (i in 1:2){
+  for (j in 0:2){
+    spec = ugarchspec(variance.model = list(model = 'sARCH',garchOrder = c(i,j)), mean.model = list(armaOrder = c(0, 1), include.mean = TRUE), distribution.model = "std")
+    garch.fit1 = ugarchfit(spec, d1_exc_rate)
+    box = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = i+j)
+    stat_garch = append(stat_garch, box$p.value)
+    acf(residuals(garch.fit1)^2)}}
+stat_garch
+
+spec = ugarchspec(variance.model = list(model = 'apARCH',garchOrder = c(1,0)), mean.model = list(armaOrder = c(0, 1), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+acf(residuals(garch.fit1)^2)
+box_apgarch$p.value
+```
+MA(2)+GARCH + apARCH
+```{r}
+stat_garch=c()
+for (i in 1:2){
+  for (j in 0:2){
+    spec = ugarchspec(variance.model = list(model = 'eGARCH',garchOrder = c(i,j)), mean.model = list(armaOrder = c(0, 2), include.mean = TRUE), distribution.model = "std")
+    garch.fit1 = ugarchfit(spec, d1_exc_rate)
+    box = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = i+j)
+    stat_garch = append(stat_garch, box$p.value)
+    acf(residuals(garch.fit1)^2)}}
+stat_garch
+
+spec = ugarchspec(variance.model = list(model = 'apARCH',garchOrder = c(1,0)), mean.model = list(armaOrder = c(0, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+box_apgarch = Box.test(residuals(garch.fit1)^2, lag = 6, type = c("Ljung-Box"), fitdf = 1)
+acf(residuals(garch.fit1)^2)
+box_apgarch$p.value
+
+```
+ностью убрать автокорреляцию квадратов остатков не получается, поэтому мы выбрали модель, которая снизила её лучше всего, это ARMA1_2 + ARCH(1.0). P_VALUE = 0.0001936718
+
+
 
 Составим прогноз, учитывая garch-эффект
-
 ```{r}
+spec = ugarchspec(variance.model = list(model = 'sGARCH',garchOrder = c(1,0)), mean.model = list(armaOrder = c(1, 2), include.mean = TRUE), distribution.model = "std")
+garch.fit1 = ugarchfit(spec, d1_exc_rate)
+
 prognoz <- ugarchforecast(garch.fit1, n.ahead = 60)
 plot(prognoz@forecast$seriesFor, type="line")
 Yforecast<-c(d1_exc_rate, prognoz@forecast$seriesFor)
 plot(Yforecast, type="line")
 ```
+
+
+```{r}
+infocriteria(garch.fit1)
+likelihood(garch.fit1)
+metrics
+```
+Модель ARMA12 без ARCH эффекта демонстрирует лучшие показатели.
 
 
 Начнём искать структурные разрывы
@@ -396,7 +486,7 @@ for (i in 3:22){
   test_cor = grangertest(data_norm[,i], data_norm[,2], order = 24)
   cor_p = append(cor_p, test_cor$`Pr(>F)`)
 }
-data.frame('номер_переменной'= seq(3,22,1),'переменная'=colnames(data_norm)[3:22],'p_value' = na.omit(cor_p)[1:20], "значимость" = na.omit(cor_p)[1:20]<0.)
+data.frame('номер_переменной'= seq(3,22,1),'переменная'=colnames(data_norm)[3:22],'p_value' = na.omit(cor_p)[1:20], "значимость" = na.omit(cor_p)[1:20]<0.1)
 ```  
 При включении в модель по отдельности некоторые переменные, а именно:
 - дефлятор ВВП Австралии, (<0.01)
@@ -424,11 +514,11 @@ VARselect(var1, lag.max = 32, type="const")
 ```
 Рекоммендуется брать 15 лагов
 ```{r}
-var1 = VAR(var1, p=28, type="const")
+var1 = VAR(var1, p=15, type="const")
 summary(var1)
+coef(var1)
 ```
 Отстатки в первой ковариационной матрице остатков, построенной как раз для обменного курса, почти нулевые. Значит прогноз не будет давать ошибок.
-
 
 ```{r}
 Acf(var1$varresult$exc_rate$residuals)
@@ -437,10 +527,29 @@ ccf(var1$varresult$exc_rate$residuals, var1$varresult$def_aus$residuals)
 Hosking(var1, lags=2*var1$p)
 LiMcLeod(var1, lags=2*var1$p)
 ```
-Вероятность ошибиться, считая что кросс- и авто- корреляция отсутствует 0.36-0.45. Достаточно высока! Скорее всего мы ошибаемся. Проведем сравнение с ARIMA:
+Вероятность ошибиться, считая что кросс- и авто- корреляция отсутствует, очень низкая и составляет 0.02. 
+
+Сравним модель с лучшей из предыдущих - ARMA(1,1,2):
+```{r}
+# ARMA12 <- Arima(data[,2], c(1,1,2), include.constant =TRUE, method = c("CSS-ML"))  
+# summary(ARMA12)
+# Acf(residuals(ARMA12))
+# a = Box.test(residuals(ARMA12), lag = 6, type = c("Ljung-Box"), fitdf = 3)
+
+a = summary(var1)$logLik
+summary(var1)$logLik
+AIC(var1)
+BIC(var1)
+coef(var1)
 
 
-
-
+metrics <- data.frame(
+loglike = c(AR12$loglik, MA1$loglik, MA2$loglik, ARMA12$loglik, ARMA31$loglik, summary(var1)$logLik),
+AIC = c(AR12$aic, MA1$aic, MA2$aic, ARMA12$aic, ARMA31$aic,AIC(var1)),
+BIC = c(AR12$bic, MA1$bic, MA2$bic, ARMA12$bic, ARMA31$bic,BIC(var1)),
+row.names=c("AR12","MA1","MA2","ARMA12", "ARMA31", "VAR1"))
+metrics
+```
+VAR1 улучшает прогнозы по всем информационным критериям в сравнении с предыдущими моделями
 
 
